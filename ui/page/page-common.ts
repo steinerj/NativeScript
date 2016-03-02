@@ -3,11 +3,12 @@ import view = require("ui/core/view");
 import dts = require("ui/page");
 import styleScope = require("../styling/style-scope");
 import {ActionBar} from "ui/action-bar";
-import {DependencyObservable, PropertyMetadata, PropertyMetadataSettings, PropertyChangeData, Property, ValueSource} from "ui/core/dependency-observable";
+import {PropertyMetadataSettings, PropertyChangeData, Property, ValueSource} from "ui/core/dependency-observable";
 import * as style from "../styling/style";
 import * as fileSystemModule from "file-system";
 import * as frameModule from "ui/frame";
 import proxy = require("ui/core/proxy");
+import animationGroupModule = require("ui/animation/animationgroup");
 
 var fs: typeof fileSystemModule;
 function ensureFS() {
@@ -172,6 +173,15 @@ export class Page extends ContentView implements dts.Page {
                 }
             }
         }
+    }
+
+    public removeCssSelectors(selectorExpression: string) {
+        this._styleScope.removeSelectors(selectorExpression);
+        this._refreshCss();
+    }
+
+    public getKeyframesAnimation(animationName: string): animationGroupModule.AnimationGroup {
+        return this._styleScope.getKeyframesAnimation(animationName);
     }
 
     get frame(): frameModule.Frame {

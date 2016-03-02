@@ -2,6 +2,7 @@
     import view = require("ui/core/view");
     import cssParser = require("css");
     import styleProperty = require("ui/styling/style-property");
+    import animationGroupModule = require("ui/animation/animationgroup");
 
     export class CssSelector {
         constructor(expression: string, declarations: cssParser.Declaration[]);
@@ -13,11 +14,18 @@
 
         specificity: number;
 
+        isAnimated: boolean;
+
+        animation: animationGroupModule.AnimationGroup;
+
+        keyframes: Object;
+
         matches(view: view.View): boolean;
 
         apply(view: view.View);
 
         eachSetter(callback: (property: styleProperty.Property, resolvedValue: any) => void);
+
     }
 
     class CssTypeSelector extends CssSelector {

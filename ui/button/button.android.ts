@@ -1,5 +1,6 @@
 ﻿import common = require("./button-common");
 import utils = require("utils/utils")
+import dependencyObservable = require("ui/core/dependency-observable");
 
 global.moduleMerge(common, exports);
 
@@ -35,5 +36,35 @@ export class Button extends common.Button {
                 }
             }
         }));
+
+        this._android.setOnTouchListener(new android.view.View.OnTouchListener(
+            <utils.Owned & android.view.View.IOnTouchListener>{
+                get owner() {
+                    return that.get();
+                },
+
+                onTouch: function(v, ev) {
+                    if (ev.getAction() === 0) { // down
+                        this.owner._goToVisualState("highlighted");
+                    }
+                    else if (ev.getAction() === 1) { // up
+                        this.owner._goToVisualState("normal");
+                    }
+                    return false;
+                }
+            }
+        ));
+    }
+
+    public _onTextPropertyChanged(data: dependencyObservable.PropertyChangeData) {
+        if (this.android) {
+            this.android.setText(data.newValue + "");
+        }
+    }
+
+    public _setFormattedTextPropertyToNative(value) {
+        if (this.android) {
+            this.android.setText(value._formattedText);
+        }
     }
 }

@@ -5,23 +5,25 @@ import * as trace from "trace";
 import * as styleProperty from "ui/styling/style-property";
 import * as types from "utils/types";
 import * as utils from "utils/utils";
+import animationGroupModule = require("ui/animation/animationgroup");
 
-var ID_SPECIFICITY = 1000000;
-var ATTR_SPECIFITY = 10000;
-var CLASS_SPECIFICITY = 100;
-var TYPE_SPECIFICITY = 1;
+let ID_SPECIFICITY = 1000000;
+let ATTR_SPECIFITY = 10000;
+let CLASS_SPECIFICITY = 100;
+let TYPE_SPECIFICITY = 1;
 
 export class CssSelector {
     private _expression: string;
     private _declarations: cssParser.Declaration[];
     private _attrExpression: string;
+    protected _animationGroup: animationGroupModule.AnimationGroup;
 
     constructor(expression: string, declarations: cssParser.Declaration[]) {
         if (expression) {
             let leftSquareBracketIndex = expression.indexOf(LSBRACKET);
             if (leftSquareBracketIndex > 0) {
                 // extracts what is inside square brackets ([target = 'test'] will extract "target = 'test'")
-                var paramsRegex = /\[\s*(.*)\s*\]/;
+                let paramsRegex = /\[\s*(.*)\s*\]/;
                 let attrParams = paramsRegex.exec(expression);
                 if (attrParams && attrParams.length > 1) {
                     this._attrExpression = attrParams[1].trim();
@@ -33,12 +35,13 @@ export class CssSelector {
             }
         }
         this._declarations = declarations;
+        this._animationGroup = animationGroupModule.AnimationGroup.animationGroupFromSelectorDeclarations(this._declarations);
     }
 
     get expression(): string {
         return this._expression;
     }
-    
+
     get attrExpression(): string {
         return this._attrExpression;
     }
@@ -51,19 +54,49 @@ export class CssSelector {
         throw "Specificity property is abstract";
     }
 
+    get isAnimated(): boolean {
+        return this._animationGroup !== undefined && this._animationGroup.keyframes !== undefined && this._animationGroup.keyframes.length > 0;
+    }
+
+    get animation(): animationGroupModule.AnimationGroup {
+        return this._animationGroup;
+    }
+
+    get keyframes(): Object {
+        return this._animationGroup.keyframes;
+    }
+
+    set keyframes(value: Object) {
+        if (this._animationGroup !== undefined) {
+            this._animationGroup.keyframes = animationGroupModule.AnimationGroup.keyframesFromCSS(value);
+        }
+    }
+
+    protected get valueSourceModifier(): number {
+        return observable.ValueSource.Css;
+    }
+
     public matches(view: view.View): boolean {
         return false;
     }
 
     public apply(view: view.View) {
+        let modifier = this.valueSourceModifier;
         this.eachSetter((property, value) => {
             try {
-                view.style._setValue(property, value, observable.ValueSource.Css);
+                view.style._setValue(property, value, modifier);
             }
             catch (ex) {
                 trace.write("Error setting property: " + property.name + " view: " + view + " value: " + value + " " + ex, trace.categories.Style, trace.messageType.error);
             }
         });
+        if (this.isAnimated) {
+            if (this._animationGroup.isPlaying) {
+                // should be canceled here
+                return;
+            }
+            this._animationGroup.play(view);
+        }
     }
 
     public eachSetter(callback: (property, resolvedValue: any) => void) {
@@ -74,12 +107,12 @@ export class CssSelector {
 
             let property = styleProperty.getPropertyByCssName(name);
 
-            if (property) {                
+            if (property) {
                 // The property.valueConverter is now used to convert the value later on in DependencyObservable._setValueInternal.
                 callback(property, resolvedValue);
             }
             else {
-                var pairs = styleProperty.getShorthandPairs(name, resolvedValue);
+                let pairs = styleProperty.getShorthandPairs(name, resolvedValue);
                 if (pairs) {
                     for (let j = 0; j < pairs.length; j++) {
                         let pair = pairs[j];
@@ -108,10 +141,10 @@ function matchesType(expression: string, view: view.View): boolean {
     let exprArr = expression.split(".");
     let exprTypeName = exprArr[0];
     let exprClassName = exprArr[1];
-       
+
     let typeCheck = exprTypeName.toLowerCase() === view.typeName.toLowerCase() || 
         exprTypeName.toLowerCase() === view.typeName.split(/(?=[A-Z])/).join("-").toLowerCase();
-          
+
     if (typeCheck) {
         if (exprClassName) {
             return view._cssClasses.some((cssClass, i, arr) => { return cssClass === exprClassName });
@@ -143,7 +176,7 @@ class CssClassSelector extends CssSelector {
         return CLASS_SPECIFICITY;
     }
     public matches(view: view.View): boolean {
-        var expectedClass = this.expression;
+        let expectedClass = this.expression;
         let result = view._cssClasses.some((cssClass, i, arr) => { return cssClass === expectedClass });
         if (result && this.attrExpression) {
             return matchesAttr(this.attrExpression, view);
@@ -155,14 +188,14 @@ class CssClassSelector extends CssSelector {
 class CssCompositeSelector extends CssSelector {
     get specificity(): number {
         let result = 0;
-        for(let i = 0; i < this.parentCssSelectors.length; i++) {
+        for (let i = 0; i < this.parentCssSelectors.length; i++) {
             result += this.parentCssSelectors[i].selector.specificity;
         }
         return result;
     }
-    
+
     private parentCssSelectors: [{ selector: CssSelector, onlyDirectParent: boolean}];
-    
+
     private splitExpression(expression) {
         let result = [];
         let tempArr = [];
@@ -191,7 +224,7 @@ class CssCompositeSelector extends CssSelector {
         }
         return result;
     }
-    
+
     constructor(expr: string, declarations: cssParser.Declaration[]) {
         super(expr, declarations);
         let expressions = this.splitExpression(expr);
@@ -206,7 +239,7 @@ class CssCompositeSelector extends CssSelector {
             onlyParent = false;
         }
     }
-    
+
     public matches(view: view.View): boolean {
         let result = this.parentCssSelectors[0].selector.matches(view);
         if (!result) {
@@ -228,7 +261,6 @@ class CssCompositeSelector extends CssSelector {
             }
             if (!result) {
                 break;
-                return result;
             }
         }
         return result;
@@ -239,7 +271,7 @@ class CssAttrSelector extends CssSelector {
     get specificity(): number {
         return ATTR_SPECIFITY;
     }
-    
+
     public matches(view: view.View): boolean {
         return matchesAttr(this.attrExpression, view);
     }
@@ -282,11 +314,9 @@ function matchesAttr(attrExpression: string, view: view.View): boolean {
                 break;
         }
         return !types.isNullOrUndefined(view[attrName]) && attrCheckRegex.test(view[attrName]+"");
-    }
-    else {
+    } else {
         return !types.isNullOrUndefined(view[attrExpression]);
     }
-    return false;
 }
 
 export class CssVisualStateSelector extends CssSelector {
@@ -313,10 +343,14 @@ export class CssVisualStateSelector extends CssSelector {
         return this._state;
     }
 
+    protected get valueSourceModifier(): number {
+        return observable.ValueSource.VisualState;
+    }
+
     constructor(expression: string, declarations: cssParser.Declaration[]) {
         super(expression, declarations);
 
-        var args = expression.split(COLON);
+        let args = expression.split(COLON);
         this._key = args[0];
         this._state = args[1];
 
@@ -337,20 +371,20 @@ export class CssVisualStateSelector extends CssSelector {
     }
 
     public matches(view: view.View): boolean {
-        var matches = true;
+        let matches = true;
         if (this._isById) {
             matches = this._match === view.id;
         }
 
         if (this._isByClass) {
-            var expectedClass = this._match;
+            let expectedClass = this._match;
             matches = view._cssClasses.some((cssClass, i, arr) => { return cssClass === expectedClass });
         }
 
         if (this._isByType) {
             matches = matchesType(this._match, view);
         }
-        
+
         if (this._isByAttr) {
             matches = matchesAttr(this._key, view);
         }
@@ -359,28 +393,28 @@ export class CssVisualStateSelector extends CssSelector {
     }
 }
 
-var HASH = "#";
-var DOT = ".";
-var COLON = ":";
-var SPACE = " ";
-var GTHAN = ">";
-var LSBRACKET = "[";
-var RSBRACKET = "]";
-var EQUAL = "=";
+let HASH = "#";
+let DOT = ".";
+let COLON = ":";
+let SPACE = " ";
+let GTHAN = ">";
+let LSBRACKET = "[";
+let RSBRACKET = "]";
+let EQUAL = "=";
 
 export function createSelector(expression: string, declarations: cssParser.Declaration[]): CssSelector {
     let goodExpr = expression.replace(/>/g, " > ").replace(/\s\s+/g, " ");
-    var spaceIndex = goodExpr.indexOf(SPACE);
+    let spaceIndex = goodExpr.indexOf(SPACE);
     if (spaceIndex >= 0) {
         return new CssCompositeSelector(goodExpr, declarations);
     }
-    
+
     let leftSquareBracketIndex = goodExpr.indexOf(LSBRACKET);
     if (leftSquareBracketIndex === 0) {
         return new CssAttrSelector(goodExpr, declarations);
-    } 
-    
-    var colonIndex = goodExpr.indexOf(COLON);
+    }
+
+    let colonIndex = goodExpr.indexOf(COLON);
     if (colonIndex >= 0) {
         return new CssVisualStateSelector(goodExpr, declarations);
     }
@@ -410,6 +444,6 @@ class InlineStyleSelector extends CssSelector {
 }
 
 export function applyInlineSyle(view: view.View, declarations: cssParser.Declaration[]) {
-    var localStyleSelector = new InlineStyleSelector(declarations);
+    let localStyleSelector = new InlineStyleSelector(declarations);
     localStyleSelector.apply(view);
 }
