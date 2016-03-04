@@ -1,6 +1,6 @@
 sudo: required
 dist: trusty
-language: node_js
+language: android
 node_js:
     4.2.3
 android:
