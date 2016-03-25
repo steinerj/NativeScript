@@ -131,19 +131,22 @@ export class KeyframeAnimation {
             let animation = this.animations[0];
             let modifier = animation["valueSource"];
 
-            if (animation["backgroundColor"] !== undefined) {
+            if ("backgroundColor" in animation) {
                 view.style._setValue(style.backgroundColorProperty, animation["backgroundColor"], modifier);
             }
-            if (animation["scale"] !== undefined) {
+            if ("scale" in animation) {
                 view.style._setValue(style.scaleXProperty, animation["scale"].x, modifier);
                 view.style._setValue(style.scaleYProperty, animation["scale"].y, modifier);
             }
-            if (animation["translate"] !== undefined) {
+            if ("translate" in animation) {
                 view.style._setValue(style.translateXProperty, animation["translate"].x, modifier);
                 view.style._setValue(style.translateYProperty, animation["translate"].y, modifier);
             }
-            if (animation["rotate"] !== undefined) {
+            if ("rotate" in animation) {
                 view.style._setValue(style.rotateProperty, animation["rotate"], modifier);
+            }
+            if ("opacity" in animation) {
+                view.style._setValue(style.opacityProperty, animation["opacity"], modifier);
             }
 
             let that = this;
